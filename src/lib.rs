@@ -5,6 +5,9 @@ use anyrun_plugin::*;
 use serde::Deserialize;
 use weather::WeatherResponse;
 
+use sys_locale::get_locale;
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod weather;
 
 // Updated configuration now omits a fixed weather location.
@@ -28,6 +31,7 @@ struct GeoLocation {
 pub struct State {
     config: Option<Config>,
     city_id: Option<i32>,
+    lang: String,
 }
 
 // Helper function that retrieves the current latitude and longitude using an external IP geolocation service.
@@ -38,6 +42,9 @@ fn get_current_location() -> Option<GeoLocation> {
 
 #[init]
 fn init(config_dir: RString) -> State {
+    // Detect and set system language
+    let lang = get_locale().unwrap_or_else(|| String::from("en-US"));
+
     State {
         config: match fs::read_to_string(format!("{}/weather.ron", config_dir)) {
             Ok(content) => Some(ron::from_str(&content).unwrap()),
@@ -47,6 +54,7 @@ fn init(config_dir: RString) -> State {
             }
         },
         city_id: None,
+        lang,
     }
 }
 
@@ -60,6 +68,8 @@ fn info() -> PluginInfo {
 
 #[get_matches]
 fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
+    rust_i18n::set_locale(&state.lang);
+
     let prefix = if let Some(config) = state.config.as_ref() {
         config.prefix.as_str()
     } else {
@@ -82,26 +92,31 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
             config.weather_location
         };
         let response = reqwest::blocking::get(format!(
-            "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units={}",
+            "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units={}&lang={}",
             location.lat,
             location.lon,
             config.openweatherapi_key,
-            config.units.to_string()
+            config.units.to_string(),
+            state.lang.replace('-', "_")
         ));
         if let Ok(response) = response {
             let data: WeatherResponse = response.json().unwrap();
             state.city_id = Some(data.id);
             vec![Match {
-                title: format!("{:.1} {}", data.main.temp, config.units.unitSuffix()).into(),
+                title: format!("{:.1} {}", data.main.temp, config.units.unit_suffix()).into(),
                 icon: ROption::RSome("weather".into()),
                 use_pango: false,
                 description: ROption::RSome(RString::from(format!(
-                    "{}\nFeels like: {} {}\nHumidity: {} %\nPressure: {} hPa\n\nData for: {}",
+                    "{}\n{}: {} {}\n{}: {} %\n{}: {} hPa\n\n{}: {}",
                     data.weather.head.description,
+                    rust_i18n::t!("feels_like"),
                     data.main.feels_like,
-                    config.units.unitSuffix(),
+                    config.units.unit_suffix(),
+                    rust_i18n::t!("humidity"),
                     data.main.humidity,
+                    rust_i18n::t!("pressure"),
                     data.main.pressure,
+                    rust_i18n::t!("data_for"),
                     data.name
                 ))),
                 id: ROption::RNone,
@@ -109,20 +124,20 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
             .into()
         } else {
             vec![Match {
-                title: "Error getting weather".into(),
+                title: rust_i18n::t!("error_getting_weather").into(),
                 icon: ROption::RSome("dialog-error".into()),
                 use_pango: false,
-                description: ROption::RSome("Error getting response from OpenWeatherAPI".into()),
+                description: ROption::RSome(rust_i18n::t!("error_openweather_api").into()),
                 id: ROption::RNone,
             }]
             .into()
         }
     } else {
         vec![Match {
-            title: "Weather config not loaded".into(),
+            title: rust_i18n::t!("config_not_loaded").into(),
             icon: ROption::RSome("dialog-error".into()),
             use_pango: false,
-            description: ROption::RSome("Config either malformed or not created".into()),
+            description: ROption::RSome(rust_i18n::t!("config_malformed").into()),
             id: ROption::RNone,
         }]
         .into()

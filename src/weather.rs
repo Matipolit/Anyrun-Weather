@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use nonempty::NonEmpty;
 use serde::Deserialize;
 
@@ -20,7 +22,7 @@ impl std::string::ToString for WeatherUnits {
 }
 
 impl WeatherUnits {
-    pub fn unitSuffix(&self) -> String {
+    pub fn unit_suffix(&self) -> String {
         match self {
             WeatherUnits::Standard => "K".into(),
             WeatherUnits::Metric => "°C".into(),
